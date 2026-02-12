@@ -239,14 +239,10 @@ void setup() {
   // Determine which dimension (X or Y) of the image is the maximum
   boolean isXMax = imageWidth >= imageHeight;
   println("Is X dimension of the image maximum? " + isXMax);
-  float maxSVG=isXMax ? imageWidth : imageHeight;   //provarapp
-  println("Maximum Dimension SVG: "+ maxSVG);       //provarapp
   // Determine the maximum dimension based on the screen size
  
   float maxDimension = isXMax ? xScreen : yScreen;
   println("Maximum Dimension: " + maxDimension);
-  
-  float svgScaleFactor=maxSVG / (isXMax ? xDim : yDim);   //provarapp
 
   // Calculate scaling factor for mapping to screen dimensions
   screenScaleFactor = maxDimension / (isXMax ? imageWidth : imageHeight);
@@ -285,8 +281,8 @@ void setup() {
   factor=scaleFactor;
   println("Redction factor paper vs screen:"+factor);
 
-  stepSVG=step * svgScaleFactor;
   stepDisplay=step/factor;
+  stepSVG=stepDisplay;
   sovr=stepDisplay-0.5;
   print("Step paper:"+step); 
   print(" - Step display:"+stepDisplay);
@@ -352,7 +348,7 @@ void buildHatchingAndViewer() {
     }
 
     if (hatching) {
-      intersection(curr, ic, distHatch);
+      intersection(curr, ic, distHatch / factor);
     }
 
     RShape currResize = curr;

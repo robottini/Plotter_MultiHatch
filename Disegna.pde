@@ -10,6 +10,14 @@ void disegna() {
   }
 }
 
+void disegnaOriginale(float baseX) {
+  if (img == null) return;
+  pushMatrix();
+  translate(baseX - img.getX(), -img.getY());
+  img.draw();
+  popMatrix();
+}
+
 ////////////////////////////////////////////////////////////////
 // disegna le forme simulando le dimensioni della carta
 void disegnaPaper() {
@@ -25,7 +33,12 @@ void disegnaPaper() {
 // disegna le linee scalando alle dimensioni dello schermo
 void disegnaTutto() {
   background(255);
-   
+  disegnaOriginale(0);
+  disegnaTuttoAt(xScreen);
+  disegnaBlocchetti(xScreen);
+}
+
+void disegnaTuttoAt(float baseX) {
   for (int i=0; i<lineaList.size(); i++) {
     noFill();
     strokeWeight(sovr);
@@ -37,6 +50,7 @@ void disegnaTutto() {
     lineaSh.addLineTo(t2.x, t2.y);
     lineaSh.translate(-xOffset, -yOffset); //ritorna all'origine dello schermo
     lineaSh.scale(1/factor); //scala alla dimensione schermo
+    lineaSh.translate(baseX, 0);
     lineaSh.draw();
   }
 }
@@ -46,7 +60,12 @@ void disegnaTutto() {
 void disegnaLinea() {
   background(255);  
  
-  if (indiceInizio >= lineaList.size())disegnaTutto();
+  disegnaOriginale(0);
+  if (indiceInizio >= lineaList.size()) {
+    disegnaTuttoAt(xScreen);
+    disegnaBlocchetti(xScreen);
+    return;
+  }
   
   // Disegna tutti i gruppi di colori fino all'indice corrente
   int i = 0;
@@ -66,12 +85,13 @@ void disegnaLinea() {
       lineaSh.addLineTo(t2.x, t2.y);
       lineaSh.translate(-xOffset, -yOffset);
       lineaSh.scale(1/factor);
+      lineaSh.translate(xScreen, 0);
       lineaSh.draw();
       
       i++;
     }
   }
-  disegnaBlocchetti();
+  disegnaBlocchetti(xScreen);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -90,12 +110,12 @@ void mixColor() {
 
 
 //////////////////////////////////////////////////////////////////
-void disegnaBlocchetti() {
+void disegnaBlocchetti(float baseX) {
   for (int i=0; i<palette.length; i++) {
     float dimSq=xScreen/palette.length;
     stroke(0);
     fill(brighCol.get(i).colore);
-    rect(dimSq*i, yScreen, dimSq*(i+1), yScreen+50);
+    rect(baseX + dimSq*i, yScreen, baseX + dimSq*(i+1), yScreen+50);
     
     // Calcola il colore contrastante
     color c = brighCol.get(i).colore;
@@ -106,6 +126,10 @@ void disegnaBlocchetti() {
     fill(textColor);
     textAlign(CENTER, CENTER);
     textSize(30);
-    text(str(i+1), dimSq*i + dimSq/2, yScreen + 25);
+    text(str(i+1), baseX + dimSq*i + dimSq/2, yScreen + 25);
   }
+}
+
+void disegnaBlocchetti() {
+  disegnaBlocchetti(0);
 }

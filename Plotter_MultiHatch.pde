@@ -140,6 +140,23 @@ ArrayList<RShape> bezier = new ArrayList<RShape>();
 RussolinoMachineParams machineParams;
 RussolinoTimeEstimator estimator;
 
+final int UI_TOP = 80;
+final int UI_BTN_W = 220;
+final int UI_BTN_H = 44;
+boolean gcodeExported = false;
+
+final int UI_DD_W = 260;
+final int UI_DD_H = 44;
+final int UI_DD_ITEM_H = 34;
+final int UI_GO_W = 70;
+final int UI_GO_H = 44;
+
+String[] hatchStyleLabels = { "PARALLEL", "CONCENTRIC", "SPIRAL", "PERLIN", "VECFIELD" };
+int[] hatchStyleModes = { HATCH_FILL_PARALLEL, HATCH_FILL_CONCENTRIC, HATCH_FILL_SPIRAL, HATCH_FILL_PERLIN, HATCH_FILL_VECFIELD };
+int hatchStyleSelectedIndex = 0;
+int hatchStyleAppliedIndex = 0;
+boolean hatchDropdownOpen = false;
+
 
 /////////////////////////
 void settings() {
@@ -152,14 +169,14 @@ void settings() {
     xScreen=int(dimScreenMax*rapp_carta);
   }
   
-  size(xScreen, yScreen+100);
+  size(xScreen*2, yScreen+100+UI_TOP);
   pixelDensity(1);
   Locale.setDefault(Locale.US);
 }
 
 //////////////////////////////////////////////////////////////////////////
 void setup() {
-  windowResize(xScreen, yScreen+100);
+  windowResize(xScreen*2, yScreen+100+UI_TOP);
   RG.init(this);
   
   E = new PEmbroiderGraphics(this, width, height);
@@ -280,137 +297,269 @@ void setup() {
  // xOffset=xOffset-int(printedPaperWidth);
   
   println("*******************************************************************");
+  hatchStyleSelectedIndex = hatchIndexForMode(hatchFillMode);
+  hatchStyleAppliedIndex = hatchStyleSelectedIndex;
+  buildHatchingAndViewer();
+}
 
- ///// ////////////////////////////////////////////////////////////////
- //***********************************************************************************************************
-  // disegno corrente
-  ve= new ArrayList();
+int hatchIndexForMode(int mode) {
+  for (int i = 0; i < hatchStyleModes.length; i++) {
+    if (hatchStyleModes[i] == mode) return i;
+  }
+  return 0;
+}
+
+void buildHatchingAndViewer() {
+  gcodeExported = false;
+  hatchDropdownOpen = false;
+  interactiveViewerEnabled = false;
+
+  indiceInizio = 0;
+  indiceFine = 0;
+
+  formaList.clear();
+  paperFormList.clear();
+  lineaList.clear();
+  brighCol.clear();
+
+  if (bezier != null) bezier.clear();
+  ve = new ArrayList();
+  colori.clear();
+  colSVG.clear();
+  contaColSVG = 0;
+  primoColore = true;
+  palette = new color[numColori];
+
   RG.setPolygonizer(RG.ADAPTATIVE);
-  color fil=img.getStyle().fillColor;
+  color fil = img.getStyle().fillColor;
   exVert(img, fil);
-  println("tot punti da SVG: " + ve.size());
-  println("tot Forme da SVG: " +bezier.size());
-  print("Linee hatcging processate:");
-  for (int p=0; p<bezier.size(); p++) {
-    RShape curr=bezier.get(p);
-    int colForm=curr.getStyle().fillColor;
+
+  for (int p = 0; p < bezier.size(); p++) {
+    RShape curr = bezier.get(p);
+    int colForm = curr.getStyle().fillColor;
     if (colForm == #FFFFFF) {
       bezier.remove(p);
       p--;
       continue;
     }
-    int ic=-1;
-    for (int i=0; i<palette.length; i++) {
-      if (palette[i]==colForm) {
-        ic=i;
-        i=palette.length;
-      }
-    } 
 
-    if (p%50 == 0) print(p+"...");
-    if (hatching) {
-      intersection(curr, ic, distHatch); //esegui hatch
+    int ic = -1;
+    for (int i = 0; i < palette.length; i++) {
+      if (palette[i] == colForm) {
+        ic = i;
+        i = palette.length;
+      }
     }
-    
-    RShape currResize=curr;
+
+    if (hatching) {
+      intersection(curr, ic, distHatch);
+    }
+
+    RShape currResize = curr;
     RPoint originalCenter = curr.getCenter();
     RPoint[] sb = currResize.getBoundsPoints();
-    RShape Rsb = RShape.createRectangle(sb[0].x, sb[0].y, sb[1].x-sb[0].x, sb[2].y-sb[1].y);
+    RShape Rsb = RShape.createRectangle(sb[0].x, sb[0].y, sb[1].x - sb[0].x, sb[2].y - sb[1].y);
     boolean isRsbMax = Rsb.getWidth() >= Rsb.getHeight();
-    float maxRsb= isRsbMax ? Rsb.getWidth(): Rsb.getHeight();   //provarapp
-    float factorCurrResize=stepSVG/maxRsb;
-    currResize.scale(1.0-factorCurrResize);
+    float maxRsb = isRsbMax ? Rsb.getWidth() : Rsb.getHeight();
+    float factorCurrResize = stepSVG / maxRsb;
+    currResize.scale(1.0 - factorCurrResize);
     RPoint newCenter = curr.getCenter();
     float dx = originalCenter.x - newCenter.x;
     float dy = originalCenter.y - newCenter.y;
-  
-  // Apply the translation to restore the center position
     currResize.translate(dx, dy);
-    formaList.add(new Forma(currResize, ic, 0)); //aggiunge il contorno alle shape
-    
-    
-  }
-  println();
-  println("Numero shape ottenute:"+formaList.size()); //scrivi il numero di poligoni
-  println("Numero colori da SVG:"+palette.length);
-
-  //disegna();  // traccia tutte le linee sullo schermo 
-  ridimPaper(); // ridimensiona secondo le dimensioni della carta
-  if (WriteFileLine)
-    linee.println("Numero di shape:"+formaList.size());
-  println("Numero di shape:"+formaList.size());
-  println("*******************************************************************");
-  creaLista();  // passa da shape a linee
-  if (WriteFileLine)
-    linee.println("Numero di linee:"+lineaList.size());
-  orderList();  // metti tutti i colori insieme
-  if (mixColors) 
-    mixColor();    //cambia il colore di alcune linee
-  orderBrigh(); // ordina le linee - brightness più alta prima
-  background(255);
-  disegnaTutto(); //disegna le linee
-  creaGCODE();  //crea il gcode
-  //aggiungi rettangolini con i colori
-  disegnaBlocchetti();
-
-  /*
-  for (int j=0; j < palette.length; j++) {
-   int g= palette[j];
-   println("Colore "+j+" - "+hex(g));
-   }
-   */
-  if (WriteFileLine) {
-    linee.println("GCode Lines:"+Glines);
-    linee.print("Min Gcode x:"+min_gcode_x);
-    linee.println("  Max Gcode x:"+max_gcode_x);
-    linee.print("Min Gcode y:"+min_gcode_y);
-    linee.println("  Max Gcode y:"+max_gcode_y+"\n\n");
-    scriviLineeFile(); // scrivi in un file tutte le linee da disegnare
-  }
-  
-  pen_color_up();
-  String buf = "G0 Z0";
-  OUTPUT.println(buf);  
-  Glines++;
-  buf = "G1 X0 Y0 F6000";
-  OUTPUT.println(buf);  
-  Glines++;
-  buf = "G0 A0";
-  OUTPUT.println(buf);  
-  Glines++;
-
-  if (WriteFileLine) {
-    linee.flush();
-    linee.close();
+    formaList.add(new Forma(currResize, ic, 0));
   }
 
-  OUTPUT.flush();
-  OUTPUT.close();
+  paperFormList.clear();
+  ridimPaper();
 
-  println("GCode Lines:"+Glines);
-  print("Min Gcode x:"+min_gcode_x);
-  println("  Max Gcode x:"+max_gcode_x);
-  print("Min Gcode y:"+min_gcode_y);
-  println("  Max Gcode y:"+max_gcode_y);
+  lineaList.clear();
+  creaLista();
+  if (lineaList.size() > 0) {
+    orderList();
+    if (mixColors) mixColor();
+    orderBrigh();
+  }
 
-  saveFrame(path + "GCODE/" + fileNoExt + "-screen.png");
-  println("Done saving.");
-  println("Elaboration time (tenths): "+(millis()-durata)/100);
-  
-  
-  // Chiama la funzione per calcolare e visualizzare il tempo di esecuzione del G-code
-  calculateGCodeTime();
-
-
-  println("End of elaboration");
   interactiveViewerInit();
 }
 
 
 void draw() {
   if (interactiveViewerEnabled) {
-    interactiveViewerDraw();
+    background(255);
+    pushMatrix();
+    translate(0, UI_TOP);
+    disegnaOriginale(0);
+    interactiveViewerDrawAt(xScreen);
+    disegnaBlocchetti(xScreen);
+    popMatrix();
+    drawHatchControls();
+    drawGcodeButton();
   }
+}
+
+void drawHatchControls() {
+  float ddX = 18;
+  float ddY = 18;
+  stroke(0);
+  fill(255);
+  rect(ddX, ddY, UI_DD_W, UI_DD_H, 8);
+
+  fill(0);
+  textAlign(LEFT, CENTER);
+  textSize(16);
+  text(hatchStyleLabels[hatchStyleSelectedIndex], ddX + 12, ddY + UI_DD_H * 0.5);
+
+  float goX = ddX + UI_DD_W + 12;
+  float goY = ddY;
+  stroke(0);
+  fill(255);
+  rect(goX, goY, UI_GO_W, UI_GO_H, 8);
+  fill(0);
+  textAlign(CENTER, CENTER);
+  textSize(18);
+  text("GO", goX + UI_GO_W * 0.5, goY + UI_GO_H * 0.5);
+
+  if (!hatchDropdownOpen) return;
+  float listX = ddX;
+  float listY = ddY + UI_DD_H + 6;
+  for (int i = 0; i < hatchStyleLabels.length; i++) {
+    stroke(0);
+    fill(255);
+    rect(listX, listY + i * UI_DD_ITEM_H, UI_DD_W, UI_DD_ITEM_H);
+    fill(0);
+    textAlign(LEFT, CENTER);
+    textSize(14);
+    text(hatchStyleLabels[i], listX + 12, listY + i * UI_DD_ITEM_H + UI_DD_ITEM_H * 0.5);
+  }
+}
+
+void drawGcodeButton() {
+  float x = width * 0.5 - UI_BTN_W * 0.5;
+  float y = 18;
+  boolean over = mouseX >= x && mouseX <= x + UI_BTN_W && mouseY >= y && mouseY <= y + UI_BTN_H;
+
+  stroke(0);
+  if (gcodeExported) fill(200);
+  else if (over) fill(240);
+  else fill(255);
+  rect(x, y, UI_BTN_W, UI_BTN_H, 8);
+
+  fill(0);
+  textAlign(CENTER, CENTER);
+  textSize(20);
+  text("GCODE", x + UI_BTN_W * 0.5, y + UI_BTN_H * 0.5);
+}
+
+void mousePressed() {
+  if (!interactiveViewerEnabled) return;
+
+  float ddX = 18;
+  float ddY = 18;
+  float goX = ddX + UI_DD_W + 12;
+  float goY = ddY;
+  float gcodeX = width * 0.5 - UI_BTN_W * 0.5;
+  float gcodeY = 18;
+
+  boolean onDropdown = mouseX >= ddX && mouseX <= ddX + UI_DD_W && mouseY >= ddY && mouseY <= ddY + UI_DD_H;
+  if (onDropdown) {
+    hatchDropdownOpen = !hatchDropdownOpen;
+    redraw();
+    return;
+  }
+
+  if (hatchDropdownOpen) {
+    float listX = ddX;
+    float listY = ddY + UI_DD_H + 6;
+    boolean picked = false;
+    for (int i = 0; i < hatchStyleLabels.length; i++) {
+      float iy = listY + i * UI_DD_ITEM_H;
+      if (mouseX >= listX && mouseX <= listX + UI_DD_W && mouseY >= iy && mouseY <= iy + UI_DD_ITEM_H) {
+        hatchStyleSelectedIndex = i;
+        hatchDropdownOpen = false;
+        picked = true;
+        break;
+      }
+    }
+    if (!picked) hatchDropdownOpen = false;
+    redraw();
+    return;
+  }
+
+  boolean onGo = mouseX >= goX && mouseX <= goX + UI_GO_W && mouseY >= goY && mouseY <= goY + UI_GO_H;
+  if (onGo) {
+    hatchFillMode = hatchStyleModes[hatchStyleSelectedIndex];
+    hatchStyleAppliedIndex = hatchStyleSelectedIndex;
+    buildHatchingAndViewer();
+    redraw();
+    return;
+  }
+
+  boolean onGcode = mouseX >= gcodeX && mouseX <= gcodeX + UI_BTN_W && mouseY >= gcodeY && mouseY <= gcodeY + UI_BTN_H;
+  if (onGcode) {
+    if (!gcodeExported) exportOutputs();
+    redraw();
+  }
+}
+
+void exportOutputs() {
+  if (path == null || path.isEmpty() || fileNoExt == null || fileNoExt.isEmpty()) return;
+
+  File outDir = new File(path, "GCODE");
+  if (!outDir.exists()) outDir.mkdirs();
+
+  outFile = outDir.getAbsolutePath() + "/" + fileNoExt + ".GCODE";
+  String lineeFile = outDir.getAbsolutePath() + "/" + fileNoExt + ".txt";
+
+  OUTPUT = createWriter(outFile);
+  linee = createWriter(lineeFile);
+
+  linee.println("Dimensioni foglio:"+xDim+"x"+yDim);
+  linee.println("Offset:"+xOffset+"x"+yOffset+"\n");
+  linee.println("Numero di shape:"+formaList.size());
+  linee.println("Numero di linee:"+lineaList.size());
+
+  Glines = 0;
+  max_gcode_x = 0;
+  max_gcode_y = 0;
+  min_gcode_x = 10000;
+  min_gcode_y = 10000;
+  zFront = false;
+  is_pen_down = false;
+  pos.set(0, 0);
+
+  creaGCODE();
+
+  linee.println("GCode Lines:"+Glines);
+  linee.print("Min Gcode x:"+min_gcode_x);
+  linee.println("  Max Gcode x:"+max_gcode_x);
+  linee.print("Min Gcode y:"+min_gcode_y);
+  linee.println("  Max Gcode y:"+max_gcode_y+"\n\n");
+  scriviLineeFile();
+
+  pen_color_up();
+  String buf = "G0 Z0";
+  OUTPUT.println(buf);
+  Glines++;
+  buf = "G1 X0 Y0 F6000";
+  OUTPUT.println(buf);
+  Glines++;
+  buf = "G0 A0";
+  OUTPUT.println(buf);
+  Glines++;
+
+  linee.flush();
+  linee.close();
+
+  OUTPUT.flush();
+  OUTPUT.close();
+
+  PImage shot = get(xScreen, UI_TOP, xScreen, yScreen+100);
+  shot.save(outDir.getAbsolutePath() + "/" + fileNoExt + "-screen.png");
+
+  calculateGCodeTime();
+  gcodeExported = true;
 }
 
 
@@ -431,20 +580,10 @@ void selectImage(final File f) {
   
   imgPath = f.getPath();
   println("Img Path: "+imgPath);
-  int indFile= imgPath.lastIndexOf("\\");
-  path=imgPath.substring(0, indFile+1);
-  fileN=imgPath.substring(indFile+1, imgPath.length() ); 
+  path = f.getParent() + "/";
+  fileN = f.getName();
   println("Input Path: "+path);
-  fileNoExt=fileN.substring(0, fileN.length()-4 );
-  outFile=path+"GCODE\\"+fileNoExt+".GCODE"; // Assegna a outFile globale
-  String lineeFile=path+"GCODE\\"+fileNoExt+".txt";
-  OUTPUT = createWriter(outFile);
-  if (WriteFileLine) {
-    linee=createWriter(lineeFile);
-    linee.println("Dimensioni foglio:"+xDim+"x"+yDim);
-    linee.println("Offset:"+xOffset+"x"+yOffset+"\n");
-  }
-  println("output file:"+outFile);
+  fileNoExt = fileN.substring(0, fileN.length()-4);
   println("******************************************************");
   if ((img = RG.loadShape(imgPath)) == null) {
     println("is an invalid image file. Try again...\n");
@@ -485,5 +624,5 @@ void mouseWheel(MouseEvent event) {
     }
   }
   
-  disegnaLinea();
+  redraw();
 }

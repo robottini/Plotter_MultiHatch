@@ -208,7 +208,12 @@ int interactiveGroupIndexForStepPosition(int stepPos) {
 }
 
 void interactiveViewerDraw() {
-  background(255);
+  interactiveViewerDrawAt(0);
+}
+
+void interactiveViewerDrawAt(float baseX) {
+  pushMatrix();
+  translate(baseX, 0);
   int currentStepIndex = interactiveVisibleSteps - 1;
   boolean highlightCurrent = interactiveDotsEnabled;
 
@@ -241,6 +246,7 @@ void interactiveViewerDraw() {
       interactiveDrawDot(d.p, d.d);
     }
   }
+  popMatrix();
 }
 
 int interactiveColorRankForPaletteIndex(int paletteIndex) {

@@ -1,0 +1,9 @@
+GCODE/
+*.class
+.DS_Store
+applet/
+application.linux*/
+application.windows*/
+application.macosx/
+out/
+.git_backup

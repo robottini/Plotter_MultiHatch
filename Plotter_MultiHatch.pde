@@ -19,7 +19,7 @@ import java.io.*;
 import java.nio.file.*; // Potrebbe non essere strettamente necessario se si usa loadStrings
 
 //Variabili del disegno
-float step=1.2;
+float step=1.5;
 float stepDisplay; float stepSVG; //provarapp
 boolean mixColors=false; //mescola i colori ogni tanto
 boolean hatching=true; //ottieni i riempimenti a linee parallele
@@ -28,7 +28,7 @@ final int HATCH_FILL_CONCENTRIC = 1;
 final int HATCH_FILL_SPIRAL = 2;
 final int HATCH_FILL_PERLIN = 3;
 final int HATCH_FILL_VECFIELD = 4;
-int hatchFillMode = HATCH_FILL_VECFIELD;
+int hatchFillMode = HATCH_FILL_PARALLEL;
 boolean endStop=false;
 //boolean border=true; //ottieni i bordi dell'immagine
 
@@ -37,8 +37,8 @@ boolean endStop=false;
 //A4 285 205 0 35
 //A3 Yupo 395 255 0 55
 //max DIM Y = 650mm
-int xDim=410;   //dimensione x della carta utile per dipingere
-int yDim=290; //dimensione y della carta utile per dipingere
+int xDim=420;   //dimensione x della carta utile per dipingere
+int yDim=297; //dimensione y della carta utile per dipingere
 int xOffset=5; //offset x su carta
 int yOffset=50; //offset y su carta
 float rapp_carta=float(xDim)/float(yDim);
@@ -47,7 +47,7 @@ int yScreen=0; //dimensione y dello screen
 float xxMax=0;
 int dimScreenMax=1000;
 
-float distHatch=2; //distanza tra inizio e fine del tratteggio e il bordo
+float distHatch=6; //distanza tra inizio e fine del tratteggio e il bordo
 color colHide=#E3E4E6; //colore da non fare - FFFFFF = Bianco puro
 
 
@@ -140,22 +140,47 @@ ArrayList<RShape> bezier = new ArrayList<RShape>();
 RussolinoMachineParams machineParams;
 RussolinoTimeEstimator estimator;
 
-final int UI_TOP = 80;
-final int UI_BTN_W = 220;
+final int UI_TOP = 84;
+final int UI_BTN_W = 180;
 final int UI_BTN_H = 44;
 boolean gcodeExported = false;
 
-final int UI_DD_W = 260;
+final int UI_DD_W = 230;
 final int UI_DD_H = 44;
 final int UI_DD_ITEM_H = 34;
-final int UI_GO_W = 70;
+final int UI_GO_W = 64;
 final int UI_GO_H = 44;
+final int UI_PAPER_W = 230;
+final int UI_FIELD_H = 44;
+final int UI_FIELD_W = 88;
+final int UI_PAD = 16;
+final int UI_GAP = 10;
+final int FIELD_NONE = 0;
+final int FIELD_CUSTOM_W = 1;
+final int FIELD_CUSTOM_H = 2;
+final int FIELD_OFFSET_X = 3;
+final int FIELD_OFFSET_Y = 4;
 
 String[] hatchStyleLabels = { "PARALLEL", "CONCENTRIC", "SPIRAL", "PERLIN", "VECFIELD" };
 int[] hatchStyleModes = { HATCH_FILL_PARALLEL, HATCH_FILL_CONCENTRIC, HATCH_FILL_SPIRAL, HATCH_FILL_PERLIN, HATCH_FILL_VECFIELD };
 int hatchStyleSelectedIndex = 0;
 int hatchStyleAppliedIndex = 0;
 boolean hatchDropdownOpen = false;
+boolean hasElaboration = false;
+volatile boolean isElaborating = false;
+
+String[] paperFormatLabels = { "A4 Verticale", "A4 Orizzontale", "A3 Verticale", "A3 Orizzontale", "Personalizzato" };
+int[] paperFormatW = { 210, 297, 297, 420, -1 };
+int[] paperFormatH = { 297, 210, 420, 297, -1 };
+int paperFormatSelectedIndex = 3;
+int paperFormatAppliedIndex = 3;
+boolean paperDropdownOpen = false;
+
+String paperCustomWText = str(xDim);
+String paperCustomHText = str(yDim);
+String offsetXText = str(xOffset);
+String offsetYText = str(yOffset);
+int activeField = FIELD_NONE;
 
 
 /////////////////////////
@@ -295,7 +320,72 @@ void setup() {
   println("*******************************************************************");
   hatchStyleSelectedIndex = hatchIndexForMode(hatchFillMode);
   hatchStyleAppliedIndex = hatchStyleSelectedIndex;
-  buildHatchingAndViewer();
+  interactiveViewerEnabled = false;
+  hasElaboration = false;
+}
+
+void applyPaperSettingsFromUI() {
+  int nextXDim = xDim;
+  int nextYDim = yDim;
+  if (paperFormatSelectedIndex >= 0 && paperFormatSelectedIndex < paperFormatLabels.length) {
+    if (paperFormatSelectedIndex == paperFormatLabels.length - 1) {
+      Integer cw = parsePositiveIntOrNull(paperCustomWText);
+      Integer ch = parsePositiveIntOrNull(paperCustomHText);
+      if (cw != null && ch != null) {
+        nextXDim = cw;
+        nextYDim = ch;
+      }
+    } else {
+      nextXDim = paperFormatW[paperFormatSelectedIndex];
+      nextYDim = paperFormatH[paperFormatSelectedIndex];
+    }
+  }
+
+  Integer ox = parseIntOrNull(offsetXText);
+  Integer oy = parseIntOrNull(offsetYText);
+  if (ox != null) xOffset = ox;
+  if (oy != null) yOffset = oy;
+
+  xDim = nextXDim;
+  yDim = nextYDim;
+  rapp_carta = float(xDim) / float(yDim);
+
+  paperFormatAppliedIndex = paperFormatSelectedIndex;
+  recomputePaperScaling();
+}
+
+void recomputePaperScaling() {
+  if (img == null) return;
+  int imageHeight = int(img.getHeight());
+  int imageWidth = int(img.getWidth());
+  if (imageWidth <= 0 || imageHeight <= 0) return;
+
+  float paperWidthScaleFactor = float(xDim) / float(imageWidth);
+  float paperHeightScaleFactor = float(yDim) / float(imageHeight);
+  float scaleFactor = min(screenScaleFactor, min(paperWidthScaleFactor, paperHeightScaleFactor));
+  factor = scaleFactor;
+  stepDisplay = step / factor;
+  stepSVG = stepDisplay;
+  sovr = stepDisplay - 1;
+}
+
+Integer parsePositiveIntOrNull(String v) {
+  Integer n = parseIntOrNull(v);
+  if (n == null) return null;
+  if (n <= 0) return null;
+  return n;
+}
+
+Integer parseIntOrNull(String v) {
+  if (v == null) return null;
+  String s = trim(v);
+  if (s == null || s.length() == 0) return null;
+  try {
+    return Integer.parseInt(s);
+  } 
+  catch (Exception e) {
+    return null;
+  }
 }
 
 int hatchIndexForMode(int mode) {
@@ -309,6 +399,7 @@ void buildHatchingAndViewer() {
   gcodeExported = false;
   hatchDropdownOpen = false;
   interactiveViewerEnabled = false;
+  hasElaboration = false;
 
   indiceInizio = 0;
   indiceFine = 0;
@@ -378,89 +469,181 @@ void buildHatchingAndViewer() {
   }
 
   interactiveViewerInit();
+  hasElaboration = true;
+}
+
+void runElaboration() {
+  isElaborating = true;
+  interactiveViewerEnabled = false;
+  gcodeExported = false;
+  hatchDropdownOpen = false;
+  try {
+    buildHatchingAndViewer();
+  } 
+  finally {
+    isElaborating = false;
+  }
 }
 
 
 void draw() {
+  background(255);
+  pushMatrix();
+  translate(0, UI_TOP);
+  disegnaOriginale(0);
   if (interactiveViewerEnabled) {
-    background(255);
-    pushMatrix();
-    translate(0, UI_TOP);
-    disegnaOriginale(0);
     interactiveViewerDrawAt(xScreen);
     disegnaBlocchetti(xScreen);
-    popMatrix();
-    drawHatchControls();
-    drawGcodeButton();
   }
+  popMatrix();
+  drawHatchControls();
+  drawGcodeButton();
+  drawElaborationOverlay();
+}
+
+void drawElaborationOverlay() {
+  if (!isElaborating) return;
+  noStroke();
+  fill(255, 255, 255, 220);
+  rect(0, UI_TOP, width, height - UI_TOP);
+  fill(0);
+  textAlign(CENTER, CENTER);
+  textSize(32);
+  text("ELABORATION...", width * 0.5, UI_TOP + (height - UI_TOP) * 0.5);
 }
 
 void drawHatchControls() {
-  float ddX = 18;
-  float ddY = 18;
+  float ddY = UI_PAD;
+  float ddX = UI_PAD;
+  boolean overHatchDd = mouseX >= ddX && mouseX <= ddX + UI_DD_W && mouseY >= ddY && mouseY <= ddY + UI_DD_H;
   stroke(0);
-  fill(255);
+  if (overHatchDd) fill(245);
+  else fill(235);
   rect(ddX, ddY, UI_DD_W, UI_DD_H, 8);
 
   fill(0);
   textAlign(LEFT, CENTER);
   textSize(16);
-  text(hatchStyleLabels[hatchStyleSelectedIndex], ddX + 12, ddY + UI_DD_H * 0.5);
+  text("HATCHING " + hatchStyleLabels[hatchStyleSelectedIndex], ddX + 12, ddY + UI_DD_H * 0.5);
 
-  float goX = ddX + UI_DD_W + 12;
+  float goX = ddX + UI_DD_W + UI_GAP;
   float goY = ddY;
+  boolean overGo = mouseX >= goX && mouseX <= goX + UI_GO_W && mouseY >= goY && mouseY <= goY + UI_GO_H;
   stroke(0);
-  fill(255);
+  if (overGo) fill(80, 150, 255);
+  else fill(40, 120, 255);
   rect(goX, goY, UI_GO_W, UI_GO_H, 8);
-  fill(0);
+  fill(255);
   textAlign(CENTER, CENTER);
   textSize(18);
   text("GO", goX + UI_GO_W * 0.5, goY + UI_GO_H * 0.5);
 
-  if (!hatchDropdownOpen) return;
-  float listX = ddX;
-  float listY = ddY + UI_DD_H + 6;
-  for (int i = 0; i < hatchStyleLabels.length; i++) {
-    stroke(0);
-    fill(255);
-    rect(listX, listY + i * UI_DD_ITEM_H, UI_DD_W, UI_DD_ITEM_H);
-    fill(0);
-    textAlign(LEFT, CENTER);
-    textSize(14);
-    text(hatchStyleLabels[i], listX + 12, listY + i * UI_DD_ITEM_H + UI_DD_ITEM_H * 0.5);
+  float paperX = goX + UI_GO_W + 100;
+  float paperY = ddY;
+  boolean overPaperDd = mouseX >= paperX && mouseX <= paperX + UI_PAPER_W && mouseY >= paperY && mouseY <= paperY + UI_DD_H;
+  stroke(0);
+  if (overPaperDd) fill(245);
+  else fill(235);
+  rect(paperX, paperY, UI_PAPER_W, UI_DD_H, 8);
+
+  fill(0);
+  textAlign(LEFT, CENTER);
+  textSize(16);
+  text("TIPO " + paperFormatLabels[paperFormatSelectedIndex], paperX + 12, paperY + UI_DD_H * 0.5);
+
+  float fieldsY = ddY;
+  float fieldsX = paperX + UI_PAPER_W + UI_GAP;
+  boolean customEnabled = (paperFormatSelectedIndex == paperFormatLabels.length - 1);
+  drawCompactField(fieldsX, fieldsY, "W", paperCustomWText, FIELD_CUSTOM_W, customEnabled);
+  drawCompactField(fieldsX + UI_FIELD_W + UI_GAP, fieldsY, "H", paperCustomHText, FIELD_CUSTOM_H, customEnabled);
+  drawCompactField(fieldsX + (UI_FIELD_W + UI_GAP) * 2, fieldsY, "OX", offsetXText, FIELD_OFFSET_X, true);
+  drawCompactField(fieldsX + (UI_FIELD_W + UI_GAP) * 3, fieldsY, "OY", offsetYText, FIELD_OFFSET_Y, true);
+
+  if (hatchDropdownOpen) {
+    float listX = ddX;
+    float listY = ddY + UI_DD_H + 6;
+    for (int i = 0; i < hatchStyleLabels.length; i++) {
+      stroke(0);
+      fill(255);
+      rect(listX, listY + i * UI_DD_ITEM_H, UI_DD_W, UI_DD_ITEM_H);
+      fill(0);
+      textAlign(LEFT, CENTER);
+      textSize(14);
+      text(hatchStyleLabels[i], listX + 12, listY + i * UI_DD_ITEM_H + UI_DD_ITEM_H * 0.5);
+    }
+  }
+
+  if (paperDropdownOpen) {
+    float listX = paperX;
+    float listY = paperY + UI_DD_H + 6;
+    for (int i = 0; i < paperFormatLabels.length; i++) {
+      stroke(0);
+      fill(255);
+      rect(listX, listY + i * UI_DD_ITEM_H, UI_PAPER_W, UI_DD_ITEM_H);
+      fill(0);
+      textAlign(LEFT, CENTER);
+      textSize(14);
+      text(paperFormatLabels[i], listX + 12, listY + i * UI_DD_ITEM_H + UI_DD_ITEM_H * 0.5);
+    }
   }
 }
 
+void drawCompactField(float x, float y, String label, String value, int fieldId, boolean enabled) {
+  boolean active = (activeField == fieldId);
+  boolean over = mouseX >= x && mouseX <= x + UI_FIELD_W && mouseY >= y && mouseY <= y + UI_FIELD_H;
+  stroke(0);
+  if (!enabled) fill(220);
+  else if (active) fill(255, 245, 140);
+  else if (over) fill(245);
+  else fill(235);
+  rect(x, y, UI_FIELD_W, UI_FIELD_H, 8);
+  fill(enabled ? 0 : 120);
+  textAlign(CENTER, CENTER);
+  textSize(14);
+  String shown = value != null && value.length() > 0 ? (label + " " + value) : label;
+  text(shown, x + UI_FIELD_W * 0.5, y + UI_FIELD_H * 0.5);
+}
+
 void drawGcodeButton() {
-  float x = width * 0.5 - UI_BTN_W * 0.5;
-  float y = 18;
+  float y = UI_PAD;
+  float ddX = UI_PAD;
+  float goX = ddX + UI_DD_W + UI_GAP;
+  float paperX = goX + UI_GO_W + 100;
+  float fieldsX = paperX + UI_PAPER_W + UI_GAP;
+  float desiredX = fieldsX + (UI_FIELD_W + UI_GAP) * 4 + 100;
+  float x = min(width - UI_PAD - UI_BTN_W, desiredX);
   boolean over = mouseX >= x && mouseX <= x + UI_BTN_W && mouseY >= y && mouseY <= y + UI_BTN_H;
 
   stroke(0);
-  if (gcodeExported) fill(200);
-  else if (over) fill(240);
-  else fill(255);
+  if (!interactiveViewerEnabled) fill(120, 170, 255);
+  else if (over) fill(80, 150, 255);
+  else fill(40, 120, 255);
   rect(x, y, UI_BTN_W, UI_BTN_H, 8);
 
-  fill(0);
+  fill(255);
   textAlign(CENTER, CENTER);
   textSize(20);
   text("GCODE", x + UI_BTN_W * 0.5, y + UI_BTN_H * 0.5);
 }
 
 void mousePressed() {
-  if (!interactiveViewerEnabled) return;
-
-  float ddX = 18;
-  float ddY = 18;
-  float goX = ddX + UI_DD_W + 12;
+  if (isElaborating) return;
+  float ddY = UI_PAD;
+  float ddX = UI_PAD;
+  float goX = ddX + UI_DD_W + UI_GAP;
   float goY = ddY;
-  float gcodeX = width * 0.5 - UI_BTN_W * 0.5;
-  float gcodeY = 18;
+  float paperX = goX + UI_GO_W + 100;
+  float paperY = ddY;
+  float fieldsX = paperX + UI_PAPER_W + UI_GAP;
+  float desiredGcodeX = fieldsX + (UI_FIELD_W + UI_GAP) * 4 + 100;
+  float gcodeX = min(width - UI_PAD - UI_BTN_W, desiredGcodeX);
+  float gcodeY = UI_PAD;
 
   boolean onDropdown = mouseX >= ddX && mouseX <= ddX + UI_DD_W && mouseY >= ddY && mouseY <= ddY + UI_DD_H;
   if (onDropdown) {
     hatchDropdownOpen = !hatchDropdownOpen;
+    paperDropdownOpen = false;
+    activeField = FIELD_NONE;
     redraw();
     return;
   }
@@ -483,20 +666,75 @@ void mousePressed() {
     return;
   }
 
+  boolean onPaperDropdown = mouseX >= paperX && mouseX <= paperX + UI_PAPER_W && mouseY >= paperY && mouseY <= paperY + UI_DD_H;
+  if (onPaperDropdown) {
+    paperDropdownOpen = !paperDropdownOpen;
+    hatchDropdownOpen = false;
+    activeField = FIELD_NONE;
+    redraw();
+    return;
+  }
+
+  if (paperDropdownOpen) {
+    float listX = paperX;
+    float listY = paperY + UI_DD_H + 6;
+    boolean picked = false;
+    for (int i = 0; i < paperFormatLabels.length; i++) {
+      float iy = listY + i * UI_DD_ITEM_H;
+      if (mouseX >= listX && mouseX <= listX + UI_PAPER_W && mouseY >= iy && mouseY <= iy + UI_DD_ITEM_H) {
+        paperFormatSelectedIndex = i;
+        if (paperFormatSelectedIndex >= 0 && paperFormatSelectedIndex < paperFormatLabels.length - 1) {
+          paperCustomWText = str(paperFormatW[paperFormatSelectedIndex]);
+          paperCustomHText = str(paperFormatH[paperFormatSelectedIndex]);
+        }
+        paperDropdownOpen = false;
+        picked = true;
+        break;
+      }
+    }
+    if (!picked) paperDropdownOpen = false;
+    redraw();
+    return;
+  }
+
+  float fieldsY = ddY;
+  boolean customEnabled = (paperFormatSelectedIndex == paperFormatLabels.length - 1);
+  if (tryActivateField(fieldsX, fieldsY, FIELD_CUSTOM_W, customEnabled)) return;
+  if (tryActivateField(fieldsX + UI_FIELD_W + UI_GAP, fieldsY, FIELD_CUSTOM_H, customEnabled)) return;
+  if (tryActivateField(fieldsX + (UI_FIELD_W + UI_GAP) * 2, fieldsY, FIELD_OFFSET_X, true)) return;
+  if (tryActivateField(fieldsX + (UI_FIELD_W + UI_GAP) * 3, fieldsY, FIELD_OFFSET_Y, true)) return;
+
   boolean onGo = mouseX >= goX && mouseX <= goX + UI_GO_W && mouseY >= goY && mouseY <= goY + UI_GO_H;
   if (onGo) {
     hatchFillMode = hatchStyleModes[hatchStyleSelectedIndex];
     hatchStyleAppliedIndex = hatchStyleSelectedIndex;
-    buildHatchingAndViewer();
-    redraw();
+    applyPaperSettingsFromUI();
+    thread("runElaboration");
     return;
   }
 
   boolean onGcode = mouseX >= gcodeX && mouseX <= gcodeX + UI_BTN_W && mouseY >= gcodeY && mouseY <= gcodeY + UI_BTN_H;
   if (onGcode) {
-    if (!gcodeExported) exportOutputs();
+    if (interactiveViewerEnabled && !gcodeExported) exportOutputs();
     redraw();
   }
+
+  activeField = FIELD_NONE;
+}
+
+boolean tryActivateField(float fieldX, float fieldY, int fieldId, boolean enabled) {
+  if (!enabled) return false;
+  if (mouseX < fieldX || mouseX > fieldX + UI_FIELD_W) return false;
+  if (mouseY < fieldY || mouseY > fieldY + UI_FIELD_H) return false;
+  if (activeField != fieldId) {
+    if (fieldId == FIELD_CUSTOM_W) paperCustomWText = "";
+    else if (fieldId == FIELD_CUSTOM_H) paperCustomHText = "";
+    else if (fieldId == FIELD_OFFSET_X) offsetXText = "";
+    else if (fieldId == FIELD_OFFSET_Y) offsetYText = "";
+  }
+  activeField = fieldId;
+  redraw();
+  return true;
 }
 
 void exportOutputs() {
@@ -596,6 +834,7 @@ String timestamp() {
 
 //////////////////////////////////////////////////////////////////////
 void mouseWheel(MouseEvent event) {
+  if (!interactiveViewerEnabled || lineaList == null || lineaList.size() == 0) return;
   if (indiceFine >= lineaList.size()) {
     indiceFine=lineaList.size()-1;
   }

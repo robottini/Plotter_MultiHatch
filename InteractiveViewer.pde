@@ -113,11 +113,39 @@ void interactiveViewerInit() {
   interactiveVisibleSteps = interactiveSteps.size();
   interactiveViewerEnabled = true;
   interactiveDotsEnabled = false;
-  noLoop();
-  redraw();
 }
 
 void keyPressed() {
+  if (isElaborating) return;
+
+  if (activeField != FIELD_NONE) {
+    if (keyCode == BACKSPACE) {
+      if (activeField == FIELD_CUSTOM_W && paperCustomWText.length() > 0) paperCustomWText = paperCustomWText.substring(0, paperCustomWText.length() - 1);
+      else if (activeField == FIELD_CUSTOM_H && paperCustomHText.length() > 0) paperCustomHText = paperCustomHText.substring(0, paperCustomHText.length() - 1);
+      else if (activeField == FIELD_OFFSET_X && offsetXText.length() > 0) offsetXText = offsetXText.substring(0, offsetXText.length() - 1);
+      else if (activeField == FIELD_OFFSET_Y && offsetYText.length() > 0) offsetYText = offsetYText.substring(0, offsetYText.length() - 1);
+      redraw();
+      return;
+    }
+
+    if (keyCode == ENTER || keyCode == RETURN) {
+      activeField = FIELD_NONE;
+      redraw();
+      return;
+    }
+
+    if ((key >= '0' && key <= '9') || key == '-' ) {
+      if (activeField == FIELD_CUSTOM_W) paperCustomWText += key;
+      else if (activeField == FIELD_CUSTOM_H) paperCustomHText += key;
+      else if (activeField == FIELD_OFFSET_X) offsetXText += key;
+      else if (activeField == FIELD_OFFSET_Y) offsetYText += key;
+      redraw();
+      return;
+    }
+
+    return;
+  }
+
   if (!interactiveViewerEnabled) return;
 
   if (key == '9') {

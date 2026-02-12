@@ -39,7 +39,7 @@ void creaLista() {
   RCommand.setSegmentator(RCommand.ADAPTATIVE);
   for (int i=0; i<paperFormList.size(); i++) {
     int typeC = paperFormList.get(i).type;
-    float minLen = (typeC == 1 && hatchFillMode == HATCH_FILL_PARALLEL) ? 1.0 : 0.1;
+    float minLen = (typeC == 1 && hatchFillMode != HATCH_FILL_CONCENTRIC) ? 1.0 : 0.1;
     float epsDup = 0.01;
     // turn the RShape into an RPolygon
     RPolygon sPolygon = paperFormList.get(i).sh.toPolygon(); //prendi solo il contorno fatto di punti
@@ -65,7 +65,7 @@ void creaLista() {
           }
           startS=endS; //la fine della precedente riga è l'inizio della nuova riga
         }
-        boolean shouldClose = (typeC == 0) || (typeC == 1 && hatchFillMode != HATCH_FILL_PARALLEL);
+        boolean shouldClose = (typeC == 0) || (typeC == 1 && hatchFillMode == HATCH_FILL_CONCENTRIC);
         if (shouldClose && !samePoint(endS, first, epsDup)) {
           float lenClose = dist(endS, first);
           if (lenClose >= minLen) {

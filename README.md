@@ -19,6 +19,7 @@ Software scritto in Processing (Java) che utilizza la libreria Geomerative per g
 ## Ultimi Aggiornamenti
 
 - **Initial Release**: Upload iniziale del progetto. Include parsing SVG, hatching e generazione GCODE.
+- **PEmbroider Hatching**: Aggiunte modalità CONCENTRIC, SPIRAL, PERLIN, VECFIELD (Processing 4).
 
 ## Output
 

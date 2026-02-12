@@ -7,13 +7,120 @@
  * @param distContour - Distanza delle linee di hatching dal bordo della forma
  */
 void intersection(RShape shape, int ic, float distContour) {
-  hatchFillMode = HATCH_FILL_PARALLEL;
-    RPoint[] ps = null; // Variabile dichiarata ma non usata in questo snippet
+  if (hatchFillMode == HATCH_FILL_PARALLEL) {
+    intersectionParallel(shape, ic, distContour);
+    return;
+  }
 
+  if (hatchFillMode == HATCH_FILL_CONCENTRIC) {
+    intersectionPembroider(shape, ic, distContour);
+    return;
+  }
+
+  if (hatchFillMode == HATCH_FILL_SPIRAL) {
+    intersectionPembroider(shape, ic, distContour);
+    return;
+  }
+
+  if (hatchFillMode == HATCH_FILL_PERLIN) {
+    intersectionPembroider(shape, ic, distContour);
+    return;
+  }
+
+  if (hatchFillMode == HATCH_FILL_VECFIELD) {
+    intersectionPembroider(shape, ic, distContour);
+    return;
+  }
+
+  intersectionParallel(shape, ic, distContour);
+}
+
+PShape rshapeToPShape(RShape shape) {
+  if (shape == null) return null;
+  RPolygon poly = shape.toPolygon();
+  if (poly == null || poly.contours == null || poly.contours.length == 0) return null;
+  if (poly.contours[0] == null || poly.contours[0].points == null || poly.contours[0].points.length < 3) return null;
+
+  PShape ps = createShape();
+  ps.beginShape();
+  ps.noStroke();
+  ps.fill(255);
+
+  RPoint[] outer = poly.contours[0].points;
+  int outerLen = outer.length;
+  if (outerLen > 1 && outer[0].x == outer[outerLen - 1].x && outer[0].y == outer[outerLen - 1].y) outerLen--;
+  for (int i = 0; i < outerLen; i++) ps.vertex(outer[i].x, outer[i].y);
+
+  for (int k = 1; k < poly.contours.length; k++) {
+    if (poly.contours[k] == null || poly.contours[k].points == null || poly.contours[k].points.length < 3) continue;
+    RPoint[] hole = poly.contours[k].points;
+    int holeLen = hole.length;
+    if (holeLen > 1 && hole[0].x == hole[holeLen - 1].x && hole[0].y == hole[holeLen - 1].y) holeLen--;
+    ps.beginContour();
+    for (int i = 0; i < holeLen; i++) ps.vertex(hole[i].x, hole[i].y);
+    ps.endContour();
+  }
+
+  ps.endShape(CLOSE);
+  return ps;
+}
+
+void intersectionPembroider(RShape shape, int ic, float distContour) {
+  if (E == null) {
+    intersectionParallel(shape, ic, distContour);
+    return;
+  }
+
+  PShape ps = rshapeToPShape(shape);
+  if (ps == null) return;
+
+  E.clear();
+  E.fill(255, 255, 0);
+  if (hatchFillMode == HATCH_FILL_CONCENTRIC) {
+    E.HATCH_MODE = PEmbroiderGraphics.CONCENTRIC;
+    E.HATCH_SPACING = stepSVG;
+  } else if (hatchFillMode == HATCH_FILL_SPIRAL) {
+    E.HATCH_MODE = PEmbroiderGraphics.SPIRAL;
+    E.HATCH_SPACING = stepSVG;
+  } else if (hatchFillMode == HATCH_FILL_PERLIN) {
+    E.HATCH_MODE = PEmbroiderGraphics.PERLIN;
+    E.HATCH_SPACING = 4;
+    E.HATCH_SCALE = 1.0;
+  } else if (hatchFillMode == HATCH_FILL_VECFIELD) {
+    E.HATCH_MODE = PEmbroiderGraphics.VECFIELD;
+    E.HATCH_VECFIELD = new MyVecField();
+    E.HATCH_SPACING = 4;
+  } else return;
+  E.shape(ps, 0, 0);
+
+  if (E.polylines == null) return;
+  for (int i = 0; i < E.polylines.size(); i++) {
+    ArrayList<PVector> pl = E.polylines.get(i);
+    if (pl == null || pl.size() < 2) continue;
+    for (int j = 0; j < pl.size() - 1; j++) {
+      PVector p0 = pl.get(j);
+      PVector p1 = pl.get(j + 1);
+      if (p0 == null || p1 == null) continue;
+      RShape hatchLine = RShape.createLine(p0.x, p0.y, p1.x, p1.y);
+      formaList.add(new Forma(hatchLine, ic, 1));
+    }
+  }
+}
+
+class MyVecField implements PEmbroiderGraphics.VectorField {
+  public PVector get(float x, float y) {
+    x*=0.05;
+    return new PVector(1, 0.5*sin(x));
+  }
+}
+void intersectionParallel(RShape shape, int ic, float distContour) {
+  RPoint[] ps = null; // Variabile dichiarata ma non usata in questo snippet
   // Ottiene i punti che formano il rettangolo di delimitazione della forma
   RPoint[] sb = shape.getBoundsPoints();
   // sb[0] tipicamente è il punto in alto a sinistra (minX, minY)
+  // sb[0] tipicamente è il punto in alto a sinistra (minX, minY)
   // sb[1] tipicamente è il punto in alto a destra (maxX, minY)
+  // sb[2] tipicamente è il punto in basso a destra (maxX, maxY)
   // sb[2] tipicamente è il punto in basso a destra (maxX, maxY)
   // sb[3] tipicamente è il punto in basso a sinistra (minX, maxY)
 

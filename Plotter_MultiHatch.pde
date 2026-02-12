@@ -5,6 +5,7 @@
 // crea una lista di sole linee a partire dalle shape
 // viene creato il GCode a partire dalla lista normalizzata
 
+import processing.embroider.*;
 import geomerative.*;
 import java.util.Locale;
 import java.util.Date;  
@@ -24,7 +25,10 @@ boolean mixColors=false; //mescola i colori ogni tanto
 boolean hatching=true; //ottieni i riempimenti a linee parallele
 final int HATCH_FILL_PARALLEL = 0;
 final int HATCH_FILL_CONCENTRIC = 1;
-int hatchFillMode = HATCH_FILL_PARALLEL;
+final int HATCH_FILL_SPIRAL = 2;
+final int HATCH_FILL_PERLIN = 3;
+final int HATCH_FILL_VECFIELD = 4;
+int hatchFillMode = HATCH_FILL_VECFIELD;
 boolean endStop=false;
 //boolean border=true; //ottieni i bordi dell'immagine
 
@@ -98,6 +102,7 @@ color[] palette = new color[numColori];
 ArrayList<Forma> formaList = new ArrayList<Forma>();
 ArrayList<Forma> paperFormList = new ArrayList<Forma>();
 ArrayList<Linea> lineaList = new ArrayList<Linea>();
+PEmbroiderGraphics E;
 ArrayList<cBrigh> brighCol = new ArrayList<cBrigh>(); 
 
 float factor;
@@ -156,6 +161,18 @@ void settings() {
 void setup() {
   windowResize(xScreen, yScreen+100);
   RG.init(this);
+  
+  E = new PEmbroiderGraphics(this, width, height);
+   // PLOTTER-SPECIFIC COMMANDS: 
+   // Set this to false so that there aren't superfluous waypoints on straight lines: 
+   E.toggleResample(false); 
+   // Set this to false so that there aren't connecting lines between shapes. 
+   // Note that you'll still be able to pre-visualize the connecting lines 
+   // (the plotter path) if you set E.visualize(true, true, true); 
+   E.toggleConnectingLines(false); 
+   // This affects the visual quality of inset/offset curves for CONCENTRIC fills: 
+   E.CONCENTRIC_ANTIALIGN = 0.0;
+
   durata=millis();
 
   // Inizializza i parametri della macchina e lo stimatore del tempo

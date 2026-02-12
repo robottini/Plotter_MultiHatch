@@ -1,4 +1,9 @@
 GCODE/
+GCODE\\
+GCODE\\/
+**/GCODE/
+**/GCODE\\
+**/GCODE\\/
 *.class
 .DS_Store
 applet/

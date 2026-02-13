@@ -84,12 +84,12 @@ void intersectionPembroider(RShape shape, int ic, float distContour) {
     E.HATCH_SPACING = stepSVG;
   } else if (hatchFillMode == HATCH_FILL_PERLIN) {
     E.HATCH_MODE = PEmbroiderGraphics.PERLIN;
-    E.HATCH_SPACING = 4;
+    E.HATCH_SPACING = stepSVG;
     E.HATCH_SCALE = 1.0;
   } else if (hatchFillMode == HATCH_FILL_VECFIELD) {
     E.HATCH_MODE = PEmbroiderGraphics.VECFIELD;
     E.HATCH_VECFIELD = new MyVecField();
-    E.HATCH_SPACING = 4;
+    E.HATCH_SPACING = stepSVG;
   } else return;
   E.shape(ps, 0, 0);
 

@@ -1,9 +1,20 @@
-// Viene creato il gcode a partire da una immagine SVG. L'immagine è di 1000x700 pixel 
-// viene creata una classe contenente anche il colore e la tipologia di forma (0=contorno, 1=filling)
-// ogni shape (contorno o fill) viene inserita nella lista
-// viene creata una nuova lista normalizzata alle dimensioni del foglio 
-// crea una lista di sole linee a partire dalle shape
-// viene creato il GCode a partire dalla lista normalizzata
+/*
+OBIETTIVO
+- Generare GCODE per un plotter partendo da un file SVG, mantenendo contorni e riempimenti.
+
+FUNZIONALITÀ PRINCIPALI
+- Import SVG (Geomerative) e gestione colori/forme.
+- Generazione hatching (PARALLEL / CONCENTRIC / SPIRAL / PERLIN / VECFIELD).
+- Ridimensionamento e traslazione su un formato carta (mm) con offset.
+- Anteprima a schermo: immagine originale iniziale, elaborazione su richiesta (GO).
+- Export GCODE (pulsante GCODE) e stima tempo percorso.
+
+FLUSSO OPERATIVO
+1) Seleziona SVG.
+2) Scegli algoritmo di riempimento e formato carta (con W/H custom e OX/OY).
+3) Premi GO per elaborare e visualizzare l'anteprima.
+4) Premi GCODE per esportare i file.
+*/
 
 import processing.embroider.*;
 import geomerative.*;
@@ -18,79 +29,70 @@ import java.util.regex.*;
 import java.io.*;
 import java.nio.file.*; // Potrebbe non essere strettamente necessario se si usa loadStrings
 
-//Variabili del disegno
-float step=1.5;
-float stepDisplay; float stepSVG; //provarapp
-boolean mixColors=false; //mescola i colori ogni tanto
-boolean hatching=true; //ottieni i riempimenti a linee parallele
+
+
+// ===================== CONFIGURAZIONE UTENTE (MODIFICA QUI) =====================
+float step=1.5; //mm: distanza tra le linee di hatching sul foglio
+float distHatch=1; //mm: margine dal bordo (distanza tra tratteggio e contorno)
+boolean mixColors=false; //mescola i colori durante l'ordine di plot (se true)
+color colHide=#E3E4E6; //colore da ignorare/filtrare (es. sfondo non da disegnare)
+boolean endStop=false; //true per eseguire homing usando endstop all'inizio del GCODE
+
+int xDim=420; //mm: larghezza carta (default UI; può essere cambiata dal menu TIPO)
+int yDim=297; //mm: altezza carta (default UI; può essere cambiata dal menu TIPO)
+int xOffset=5; //mm: offset X su carta (default UI; applicato premendo GO)
+int yOffset=50; //mm: offset Y su carta (default UI; applicato premendo GO)
+int dimScreenMax=1000; //px: dimensione massima anteprima (scala finestra e preview)
+
+float maxDist=35.0; //mm: lunghezza massima di un segmento (spezzettamento in GCODE)
+float distMinLines=2; //mm: distanza minima tra linee per evitare pen-up ravvicinati
+
+float absZDown=68.0; //Z: quota pennello giù (pittura)
+float absZUp=absZDown-30.0; //Z: quota pennello su (movimenti rapidi)
+float colZup=absZDown-66.0; //Z: quota su per prelievo colore
+float colZDown=absZDown-30.0; //Z: quota giù per prelievo colore
+float watZUp=colZup; //Z: quota su per prelievo acqua
+float watZdown=absZDown-30.0; //Z: quota giù per prelievo acqua
+float abszFront=33.0; //A: assetto durante pittura
+float abszBack=0.1; //A: assetto durante prelievo colore/acqua
+
+float radix=41.0+10.0; //X: origine del primo colore sul piano tavolo
+float radiy=0.0; //Y: origine del primo colore sul piano tavolo
+float radiz=0.0; //Z: offset Z base (se usato)
+float add_x=41.0; //X: passo tra vaschette colore successive
+float add_y=0.0; //Y: passo tra vaschette colore successive
+
+float x_vaschetta=10.0; //X: posizione vaschetta acqua
+float y_vaschetta=0.0; //Y: posizione vaschetta acqua
+float x_spugnetta=radix+10.0*add_x; //X: posizione spugnetta
+float y_spugnetta=radiy+10.0*add_y; //Y: posizione spugnetta
+boolean spugnetta=false; //true se serve asciugare su spugnetta durante il lavoro
+
+float speedAbs=1500.0; //velocità in pittura
+float speedFast=10000.0; //velocità in spostamenti a penna su
+float speedContour=1500.0; //velocità per i contorni
+
+boolean WriteFileLine=true; //scrive anche il file diagnostico con le linee generate
+boolean contour_white=false; //true per contorno bianco delle figure (se previsto)
+String nomeAlgo="SVG"; //prefisso per i file esportati
+
+// ===================== LOGICA / STATO INTERNO (NON TOCCARE) =====================
 final int HATCH_FILL_PARALLEL = 0;
 final int HATCH_FILL_CONCENTRIC = 1;
 final int HATCH_FILL_SPIRAL = 2;
 final int HATCH_FILL_PERLIN = 3;
 final int HATCH_FILL_VECFIELD = 4;
-int hatchFillMode = HATCH_FILL_PARALLEL;
-boolean endStop=false;
+int hatchFillMode = HATCH_FILL_PARALLEL; //algoritmo di hatching di default all'avvio
+float stepDisplay;
+float stepSVG;
+boolean hatching=true; //ottieni i riempimenti (gestito dal selettore algoritmo)
 //boolean border=true; //ottieni i bordi dell'immagine
 
-//Dimensioni del foglio
-//A3 395 260 0 50
-//A4 285 205 0 35
-//A3 Yupo 395 255 0 55
-//max DIM Y = 650mm
-int xDim=420;   //dimensione x della carta utile per dipingere
-int yDim=297; //dimensione y della carta utile per dipingere
-int xOffset=5; //offset x su carta
-int yOffset=50; //offset y su carta
 float rapp_carta=float(xDim)/float(yDim);
 int xScreen=0;
 int yScreen=0; //dimensione y dello screen
 float xxMax=0;
-int dimScreenMax=1000;
-
-float distHatch=6; //distanza tra inizio e fine del tratteggio e il bordo
-color colHide=#E3E4E6; //colore da non fare - FFFFFF = Bianco puro
-
-
-///  variabili importanti per GCODE
-float maxDist=35.0; //max lenght line painted - paper coordinate
-float distMinLines=2; //min distance between lines without up the pen
-
-///coordinate per GCODE
-float absZDown=68.0;  //value Z when down paining
-float radix=41.0+10.0;    //x base coordinate for first color
-float radiy=0.0;  //y base coordinate for first color
-float radiz=0.0;   //z base coordinate for first color
-float absZUp=absZDown-30.0;  // value Z when up
-float colZup=absZDown-66.0;   // value Z when up taking color
-float colZDown=absZDown-30.0;  // value Z when down taking color
-float watZUp=colZup;   //value Z when up taking water
-//float watZdown=10.0; //value Z when down taking water
-float watZdown=absZDown-30.0; //value Z when down taking water
-float abszFront=33.0; //value A when painting
-float abszBack=0.1;   //vale A when taking color
-float spongeZup=0.0;      //value Z when up going on the sponge
-float spongeZDown=0;    //value Z when down on the spongef
-
-float add_x=41.0;   //x step for every color
-float add_y=0.0;   //y step for every color
-
-//float x_vaschetta=radix+8.5*add_x;   //x water
-//float y_vaschetta=radiy+8.5*add_y; //y water
-float x_vaschetta=10.0;   //x water
-float y_vaschetta=0.0; //y water
-float x_spugnetta=radix+10.0*add_x; //x sponge
-float y_spugnetta=radiy+10.0*add_y; //x sponge
-boolean spugnetta=false; //if need to dry the brush on the sponge
-
-// velocità 
-float speedAbs=1500.0;  //value of speed when painting
-float speedFast=10000.0; // value of speed when traveling
-float speedContour=1500.0; //value of speed painting the contours
-
-boolean WriteFileLine=true; //scrivi anche il file con le linee e i valori delle linee 
-boolean contour_white=false;  //contorno bianco delle figure 
 float shRed=0.8; //riduzione della shape per avere il bianco intorno - non usato
-String nomeAlgo="SVG"; //prefisso con cui vengono salvati i file
 float angle; //angolo delle linee - da definire se lo vuoi fisso
 float sovr; // larghezza righe in pixel
 //float sovr=2; // larghezza righe in pixel
